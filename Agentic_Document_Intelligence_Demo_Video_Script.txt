@@ -1,0 +1,131 @@
+AGENTIC DOCUMENT INTELLIGENCE — DEMO VIDEO SCRIPT
+====================================================
+
+TARGET LENGTH: 7–10 minutes
+USE SYNTHETIC DOCUMENTS ONLY.
+
+0. BEFORE RECORDING
+- Start Ollama.
+- Start Streamlit.
+- Keep the terminal visible for one processing run.
+- Keep these files ready:
+  01_Synthetic_Business_Report.docx
+  02_Synthetic_Operations_Data.xlsx
+  03_Synthetic_Floor_Plan.png
+  04_Synthetic_Text_Image.png
+  05_Synthetic_Multi_Page_Report.pdf
+
+1. INTRODUCTION — 30–45 SEC
+SAY:
+"Hello, this is my Agentic Document Intelligence Platform.
+The objective is to build a generic system that can ingest different document formats, preserve text, tables and visual information, create searchable representations, extract structured information and answer questions using grounded evidence.
+The platform is document-agnostic. I am not hard-coding a fixed schema for one document type."
+
+SHOW:
+- Streamlit application
+- Supported formats
+
+2. ARCHITECTURE — 45–60 SEC
+SAY:
+"The pipeline starts with ingestion and a modality-aware document loader.
+For PDFs, the system first checks native text. OCR is used only when native evidence is insufficient. At the same time, embedded images, tables, page blocks and vector information are preserved independently.
+The normalized document is classified and chunked while retaining page and structural metadata. Chunks are embedded into ChromaDB. A local Gemma model is then used mainly for semantic interpretation. Results are merged and validated before document-scoped retrieval and grounded reasoning."
+
+SHOW:
+- Architecture diagram / report
+- Project folders
+
+3. DOCX DEMO — 60–90 SEC
+UPLOAD: 01_Synthetic_Business_Report.docx
+SAY:
+"This synthetic report contains narrative text and a structured table. I will first show that the system preserves the table structure."
+ASK:
+"What regions are listed in the operational metrics table?"
+ASK:
+"Which region has the highest exception rate?"
+SAY:
+"These answers are grounded in the extracted document evidence."
+
+4. XLSX DEMO — 45–60 SEC
+UPLOAD: 02_Synthetic_Operations_Data.xlsx
+SAY:
+"Next I am testing a spreadsheet, demonstrating that the platform is not limited to PDFs."
+ASK:
+"How many records are present?"
+ASK:
+"What statuses are present?"
+SAY:
+"The normalized architecture allows different formats to enter the same downstream retrieval and reasoning flow."
+
+5. IMAGE/OCR DEMO — 60–90 SEC
+UPLOAD: 04_Synthetic_Text_Image.png
+SAY:
+"Now I am testing an image document. Because there is no native text layer, OCR is required. The OCR pipeline evaluates quality and can use installed language information and fallback processing when needed."
+SHOW:
+- OCR text
+- Original image
+ASK:
+"What is the reference?"
+ASK:
+"What is the status?"
+SAY:
+"The original visual asset is preserved separately from OCR text."
+
+6. VISUAL DOCUMENT DEMO — 60–90 SEC
+UPLOAD: 03_Synthetic_Floor_Plan.png
+SAY:
+"This synthetic visual document contains labels and geometric structure. A key lesson during development was that visual questions should not always be routed through ordinary text retrieval."
+ASK:
+"What labels are visible?"
+SAY:
+"The current pipeline preserves the visual evidence and extracted text. A dedicated visual/geometry reasoning agent is the natural next extension for deeper spatial questions."
+
+7. MULTI-PAGE PDF DEMO — 90–120 SEC
+UPLOAD: 05_Synthetic_Multi_Page_Report.pdf
+SAY:
+"Finally, I will demonstrate the PDF pipeline. The optimized loader checks native text first, so OCR is avoided on pages that are already machine-readable."
+SHOW:
+- Page count
+- Native text pages
+- OCR pages
+- Table count
+- Processing time
+ASK:
+"How many columns are in the metrics table?"
+ASK:
+"What was the Q3 service level?"
+SAY:
+"Structural questions such as table dimensions should preferably use deterministic table metadata rather than asking the LLM to count free-form text."
+
+8. PERFORMANCE — 45–60 SEC
+SAY:
+"During development, a 34-page document took several minutes. Profiling showed unnecessary OCR and repeated local LLM inference were important contributors.
+I improved performance by using native-first PDF processing, OCR only when needed, independent image extraction, lower-resolution UI renders, higher-resolution OCR renders only when required, OCR caching and bounded local LLM generation."
+
+SHOW:
+- Terminal timings
+- Before/after timings if available
+
+9. ISSUES AND LESSONS — 45 SEC
+SAY:
+"Testing also showed that OCR errors can affect language classification, so OCR confidence and script evidence need to be handled carefully.
+Another lesson was that retrieval is not the answer for every question. Table questions need table evidence, normal text questions need text evidence, and drawing questions may require visual or geometry evidence.
+This led to the next architectural improvement: explicit query routing."
+
+10. CLOSING — 30 SEC
+SAY:
+"To summarize, the project evolved from a basic document-to-LLM pipeline into a multimodal, evidence-grounded architecture.
+It supports heterogeneous documents, OCR, tables, images, layout information, vector retrieval, semantic extraction and grounded question answering.
+The modular design can be extended with visual reasoning, table reasoning, compliance, document comparison and enterprise workflow agents.
+Thank you."
+
+FINAL SCREEN:
+Upload
+→ Native / OCR / Visual Extraction
+→ Classification
+→ Structure-Preserving Chunking
+→ Embeddings + ChromaDB
+→ Semantic Extraction
+→ Merge + Validation
+→ Document-Scoped Retrieval
+→ Grounded Reasoning

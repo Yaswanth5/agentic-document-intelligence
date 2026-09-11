@@ -1,4 +1,3 @@
-import os
 import time
 from pathlib import Path
 
@@ -9,9 +8,8 @@ from config import (
     RETRIEVAL_MAX_K,
 )
 
-from agents.reasoning import ReasoningAgent
-from agents.retriever import DocumentRetriever
 from agents.orchestrator import DocumentOrchestrator
+from agents.qa_graph import qa_graph
 
 
 # =========================================================
@@ -45,17 +43,13 @@ if "qa_history" not in st.session_state:
 
 @st.cache_resource
 def get_orchestrator():
+    """
+    Return the LangGraph-backed document orchestrator.
+
+    The actual document workflow is defined in:
+        agents/document_graph.py
+    """
     return DocumentOrchestrator()
-
-
-@st.cache_resource
-def get_retriever():
-    return DocumentRetriever()
-
-
-@st.cache_resource
-def get_reasoning_agent():
-    return ReasoningAgent()
 
 
 # =========================================================
@@ -63,15 +57,15 @@ def get_reasoning_agent():
 # =========================================================
 
 orchestrator = get_orchestrator()
-retriever = get_retriever()
-reasoning_agent = get_reasoning_agent()
 
 
 # =========================================================
 # HEADER
 # =========================================================
 
-st.title("📄 Agentic Document Intelligence Platform")
+st.title(
+    "📄 Agentic Document Intelligence Platform"
+)
 
 st.caption(
     "Document-agnostic extraction, multimodal understanding, "
@@ -91,6 +85,28 @@ with st.sidebar:
         "Upload a document and the platform will "
         "automatically process its structure, text, "
         "tables, images and other available content."
+    )
+
+    st.divider()
+
+    st.subheader("Architecture")
+
+    st.write(
+        """
+        **Document Processing**
+        
+        LangGraph → Loader → Classifier → Chunker → 
+        ChromaDB → Extractor → Merger → Validator
+        """
+    )
+
+    st.write(
+        """
+        **Question Answering**
+        
+        LangGraph → Retrieval → Question Routing → 
+        Structured / LLM Reasoning
+        """
     )
 
     st.divider()
@@ -156,11 +172,13 @@ uploaded_file = st.file_uploader(
 
 if uploaded_file is not None:
 
-    upload_dir = Path("storage/uploads")
+    upload_dir = Path(
+        "storage/uploads"
+    )
 
     upload_dir.mkdir(
         parents=True,
-        exist_ok=True
+        exist_ok=True,
     )
 
     file_path = (
@@ -176,7 +194,7 @@ if uploaded_file is not None:
 
         with open(
             file_path,
-            "wb"
+            "wb",
         ) as file:
 
             file.write(
@@ -224,16 +242,19 @@ if uploaded_file is not None:
                     should_process = False
 
             except Exception:
+
                 pass
 
     # -----------------------------------------------------
-    # Process
+    # Process document
     # -----------------------------------------------------
 
     if should_process:
 
         st.session_state.processed_result = None
+
         st.session_state.active_document_id = None
+
         st.session_state.qa_history = []
 
         st.divider()
@@ -249,12 +270,16 @@ if uploaded_file is not None:
         try:
 
             status.info(
-                "Running document intelligence pipeline..."
+                "Initializing LangGraph document workflow..."
             )
 
-            progress.progress(10)
+            progress.progress(5)
 
             start_time = time.perf_counter()
+
+            # =================================================
+            # LANGGRAPH DOCUMENT WORKFLOW
+            # =================================================
 
             result = orchestrator.process(
                 str(file_path)
@@ -272,10 +297,52 @@ if uploaded_file is not None:
                 f"{elapsed:.2f} seconds."
             )
 
-            st.session_state.processed_result = result
+            # -------------------------------------------------
+            # Make sure Streamlit retains the uploaded path.
+            #
+            # document_graph returns the graph state, and
+            # file_path is part of the initial state.
+            # -------------------------------------------------
+
+            if isinstance(
+                result,
+                dict,
+            ):
+
+                result["file_path"] = str(
+                    file_path
+                )
+
+                # If graph timing doesn't contain total,
+                # add measured Streamlit total.
+                timing = result.get(
+                    "timing",
+                    {},
+                )
+
+                if not isinstance(
+                    timing,
+                    dict,
+                ):
+
+                    timing = {}
+
+                timing["total_seconds"] = elapsed
+
+                result["timing"] = timing
+
+            # -------------------------------------------------
+            # Save result
+            # -------------------------------------------------
+
+            st.session_state.processed_result = (
+                result
+            )
 
             st.session_state.active_document_id = (
-                result.get("document_id")
+                result.get(
+                    "document_id"
+                )
             )
 
         except Exception as exc:
@@ -315,7 +382,9 @@ if result is None:
 # =========================================================
 
 document_id = (
-    result.get("document_id")
+    result.get(
+        "document_id"
+    )
 )
 
 st.divider()
@@ -326,39 +395,81 @@ st.subheader(
 
 col1, col2, col3 = st.columns(3)
 
+
+# =========================================================
+# DOCUMENT ID METRIC
+# =========================================================
+
 with col1:
 
     st.metric(
         "Document ID",
         str(document_id)
         if document_id
-        else "N/A"
+        else "N/A",
     )
+
+
+# =========================================================
+# CHUNK METRIC
+# =========================================================
+
+chunks = result.get(
+    "chunks",
+    [],
+)
 
 with col2:
-
-    chunks = result.get(
-        "chunks",
-        []
-    )
 
     st.metric(
         "Chunks",
         len(chunks)
-        if isinstance(chunks, list)
-        else 0
+        if isinstance(
+            chunks,
+            list,
+        )
+        else 0,
     )
+
+
+# =========================================================
+# PROCESSING TIME METRIC
+# =========================================================
+
+timing = result.get(
+    "timing",
+    {},
+)
+
+if not isinstance(
+    timing,
+    dict,
+):
+
+    timing = {}
+
+
+total_time = timing.get(
+    "total_seconds",
+    timing.get(
+        "total",
+        0,
+    ),
+)
+
+if not isinstance(
+    total_time,
+    (int, float),
+):
+
+    total_time = 0
+
 
 with col3:
 
-    timing = result.get(
-        "timing",
-        {}
-    )
-
     st.metric(
         "Processing time",
-        f"{timing.get('total_seconds', 0):.2f}s"
+        f"{total_time:.2f}s",
     )
 
 
@@ -368,17 +479,17 @@ with col3:
 
 classification = result.get(
     "classification",
-    {}
+    {},
 )
 
 with st.expander(
     "📑 Document Classification",
-    expanded=True
+    expanded=True,
 ):
 
     if isinstance(
         classification,
-        dict
+        dict,
     ):
 
         display_classification = {
@@ -410,44 +521,44 @@ st.subheader(
 
 extracted = result.get(
     "extracted",
-    []
+    [],
 )
 
 if extracted:
 
     if isinstance(
         extracted,
-        list
+        list,
     ):
 
         for index, item in enumerate(
             extracted,
-            start=1
+            start=1,
         ):
 
             with st.container(
-                border=True
+                border=True,
             ):
 
                 if isinstance(
                     item,
-                    dict
+                    dict,
                 ):
 
                     field = item.get(
                         "field",
                         item.get(
                             "name",
-                            "Information"
-                        )
+                            "Information",
+                        ),
                     )
 
                     value = item.get(
                         "value",
                         item.get(
                             "text",
-                            ""
-                        )
+                            "",
+                        ),
                     )
 
                     st.markdown(
@@ -476,7 +587,7 @@ if extracted:
 
     elif isinstance(
         extracted,
-        dict
+        dict,
     ):
 
         st.json(
@@ -512,7 +623,7 @@ if merged:
 
         if isinstance(
             merged,
-            (dict, list)
+            (dict, list),
         ):
 
             st.json(
@@ -532,24 +643,24 @@ if merged:
 
 document = result.get(
     "document",
-    {}
+    {},
 )
 
 with st.expander(
     "🖼️ Multimodal / Visual Content",
-    expanded=False
+    expanded=False,
 ):
 
     images = []
 
     if isinstance(
         document,
-        dict
+        dict,
     ):
 
         images = document.get(
             "images",
-            []
+            [],
         )
 
     if images:
@@ -560,13 +671,14 @@ with st.expander(
 
         for index, image in enumerate(
             images,
-            start=1
+            start=1,
         ):
 
             if not isinstance(
                 image,
-                dict
+                dict,
             ):
+
                 continue
 
             image_path = image.get(
@@ -575,17 +687,19 @@ with st.expander(
 
             page = image.get(
                 "page",
-                "unknown"
+                "unknown",
             )
 
             caption = image.get(
                 "caption",
-                ""
+                "",
             )
 
-            if image_path and Path(
+            if (
                 image_path
-            ).exists():
+                and
+                Path(image_path).exists()
+            ):
 
                 st.image(
                     image_path,
@@ -600,10 +714,14 @@ with st.expander(
                     ),
                 )
 
-            elif image.get("image"):
+            elif image.get(
+                "image"
+            ):
 
                 st.image(
-                    image.get("image"),
+                    image.get(
+                        "image"
+                    ),
                     caption=(
                         f"Image {index} | "
                         f"Page {page}"
@@ -629,22 +747,22 @@ with st.expander(
 
 with st.expander(
     "🧩 Document Structure",
-    expanded=False
+    expanded=False,
 ):
 
     if isinstance(
         document,
-        dict
+        dict,
     ):
 
         pages = document.get(
             "pages",
-            []
+            [],
         )
 
         tables = document.get(
             "tables",
-            []
+            [],
         )
 
         st.write(
@@ -659,11 +777,13 @@ with st.expander(
 
         if tables:
 
-            st.subheader("Tables")
+            st.subheader(
+                "Tables"
+            )
 
             for index, table in enumerate(
                 tables,
-                start=1
+                start=1,
             ):
 
                 st.write(
@@ -672,14 +792,18 @@ with st.expander(
 
                 if isinstance(
                     table,
-                    dict
+                    dict,
                 ):
 
-                    st.json(table)
+                    st.json(
+                        table
+                    )
 
                 else:
 
-                    st.write(table)
+                    st.write(
+                        table
+                    )
 
         if pages:
 
@@ -689,7 +813,7 @@ with st.expander(
 
             for index, page in enumerate(
                 pages,
-                start=1
+                start=1,
             ):
 
                 with st.expander(
@@ -698,14 +822,18 @@ with st.expander(
 
                     if isinstance(
                         page,
-                        dict
+                        dict,
                     ):
 
-                        st.json(page)
+                        st.json(
+                            page
+                        )
 
                     else:
 
-                        st.write(page)
+                        st.write(
+                            page
+                        )
 
     else:
 
@@ -720,22 +848,22 @@ with st.expander(
 
 with st.expander(
     "📜 Complete Document Text",
-    expanded=False
+    expanded=False,
 ):
 
     complete_text = ""
 
     if isinstance(
         document,
-        dict
+        dict,
     ):
 
         complete_text = document.get(
             "text",
             document.get(
                 "markdown",
-                ""
-            )
+                "",
+            ),
         )
 
     if complete_text:
@@ -759,54 +887,60 @@ with st.expander(
 
 with st.expander(
     "🧱 Document Chunks",
-    expanded=False
+    expanded=False,
 ):
 
     if chunks:
 
         for index, chunk in enumerate(
             chunks,
-            start=1
+            start=1,
         ):
 
             if not isinstance(
                 chunk,
-                dict
+                dict,
             ):
 
-                st.write(chunk)
+                st.write(
+                    chunk
+                )
 
                 continue
 
             chunk_id = chunk.get(
                 "chunk_id",
-                index
+                index,
             )
 
             page = chunk.get(
                 "page",
-                "unknown"
+                "unknown",
             )
+
+            metadata = chunk.get(
+                "metadata",
+                {},
+            )
+
+            if not isinstance(
+                metadata,
+                dict,
+            ):
+
+                metadata = {}
 
             chunk_type = chunk.get(
                 "type",
-                chunk.get(
-                    "metadata",
-                    {}
-                ).get(
+                metadata.get(
                     "type",
-                    "text"
-                )
-                if isinstance(
-                    chunk.get("metadata"),
-                    dict
-                )
-                else "text"
+                    "text",
+                ),
             )
 
             text = chunk.get(
                 "text",
-                ""
+                "",
             )
 
             st.markdown(
@@ -817,28 +951,30 @@ with st.expander(
                 f"Page: {page} | Type: {chunk_type}"
             )
 
-            st.text(text)
-
-            images = chunk.get(
-                "images",
-                []
+            st.text(
+                text
             )
 
-            if images:
+            chunk_images = chunk.get(
+                "images",
+                [],
+            )
+
+            if chunk_images:
 
                 st.caption(
-                    f"Images: {len(images)}"
+                    f"Images: {len(chunk_images)}"
                 )
 
-            tables = chunk.get(
+            chunk_tables = chunk.get(
                 "tables",
-                []
+                [],
             )
 
-            if tables:
+            if chunk_tables:
 
                 st.caption(
-                    f"Tables: {len(tables)}"
+                    f"Tables: {len(chunk_tables)}"
                 )
 
     else:
@@ -854,7 +990,7 @@ with st.expander(
 
 with st.expander(
     "📐 Spatial / Layout Information",
-    expanded=False
+    expanded=False,
 ):
 
     spatial_found = False
@@ -863,23 +999,24 @@ with st.expander(
 
         for index, chunk in enumerate(
             chunks,
-            start=1
+            start=1,
         ):
 
             if not isinstance(
                 chunk,
-                dict
+                dict,
             ):
+
                 continue
 
             blocks = chunk.get(
                 "blocks",
-                []
+                [],
             )
 
             lines = chunk.get(
                 "lines",
-                []
+                [],
             )
 
             if blocks:
@@ -890,7 +1027,9 @@ with st.expander(
                     f"**Chunk {index} — Blocks**"
                 )
 
-                st.json(blocks)
+                st.json(
+                    blocks
+                )
 
             if lines:
 
@@ -900,12 +1039,34 @@ with st.expander(
                     f"**Chunk {index} — Lines**"
                 )
 
-                st.json(lines)
+                st.json(
+                    lines
+                )
 
     if not spatial_found:
 
         st.info(
             "No explicit spatial information available."
+        )
+
+
+# =========================================================
+# STRUCTURAL SUMMARY FROM LANGGRAPH
+# =========================================================
+
+structural_summary = result.get(
+    "structural_summary",
+)
+
+if structural_summary:
+
+    with st.expander(
+        "📊 Structural Summary",
+        expanded=False,
+    ):
+
+        st.json(
+            structural_summary
         )
 
 
@@ -919,21 +1080,25 @@ validation = result.get(
 
 with st.expander(
     "✅ Validation",
-    expanded=False
+    expanded=False,
 ):
 
     if validation:
 
         if isinstance(
             validation,
-            (dict, list)
+            (dict, list),
         ):
 
-            st.json(validation)
+            st.json(
+                validation
+            )
 
         else:
 
-            st.write(validation)
+            st.write(
+                validation
+            )
 
     else:
 
@@ -967,7 +1132,7 @@ question = st.text_input(
 
 
 # =========================================================
-# QUESTION ANSWERING
+# QUESTION ANSWERING — LANGGRAPH
 # =========================================================
 
 if st.button(
@@ -975,7 +1140,11 @@ if st.button(
     type="primary",
 ):
 
-    if not question or not question.strip():
+    if (
+        not question
+        or
+        not question.strip()
+    ):
 
         st.warning(
             "Please enter a question."
@@ -990,7 +1159,8 @@ if st.button(
     else:
 
         with st.spinner(
-            "Searching document and reasoning over evidence..."
+            "LangGraph is retrieving evidence and "
+            "reasoning over the document..."
         ):
 
             try:
@@ -1005,106 +1175,69 @@ if st.button(
                 )
 
                 # =================================================
-                # RETRIEVE
+                # LANGGRAPH QA WORKFLOW
+                # =================================================
+                #
+                # The graph performs:
+                #
+                #     Retrieve
+                #         ↓
+                #     Question Classification
+                #         ↓
+                #     Conditional Routing
+                #       /             \
+                # Structured           LLM
+                # Reasoning          Reasoning
+                #       \             /
+                #          Answer
+                #
                 # =================================================
 
-                contexts = retriever.retrieve(
-                    query=question,
-                    document_id=document_id,
-                    top_k=retrieval_k,
+                qa_result = qa_graph.invoke(
+                    {
+                        "question": question.strip(),
+                        "document_id": str(
+                            document_id
+                        ),
+                        "top_k": retrieval_k,
+                    }
                 )
 
                 # =================================================
-                # RETRIEVAL DEBUG
+                # GET ANSWER
                 # =================================================
 
-                print(
-                    "\n"
-                    "========== RETRIEVAL DEBUG =========="
+                answer = qa_result.get(
+                    "answer",
+                    "The document does not contain enough "
+                    "information to answer this question.",
                 )
 
-                print(
-                    "QUESTION:",
-                    question
+                # =================================================
+                # GET RETRIEVED CONTEXT
+                # =================================================
+
+                contexts = qa_result.get(
+                    "contexts",
+                    [],
                 )
 
-                print(
-                    "DOCUMENT ID:",
-                    document_id
-                )
-
-                print(
-                    "RETRIEVAL K:",
-                    retrieval_k
-                )
-
-                print(
-                    "CONTEXT COUNT:",
-                    len(contexts)
-                )
-
-                for i, ctx in enumerate(
+                if not isinstance(
                     contexts,
-                    start=1
+                    list,
                 ):
 
-                    print(
-                        f"\n--- CONTEXT {i} ---"
-                    )
-
-                    if not isinstance(
-                        ctx,
-                        dict
-                    ):
-
-                        print(
-                            "INVALID CONTEXT:",
-                            ctx
-                        )
-
-                        continue
-
-                    print(
-                        "CHUNK ID:",
-                        ctx.get(
-                            "chunk_id"
-                        )
-                    )
-
-                    print(
-                        "DISTANCE:",
-                        ctx.get(
-                            "distance"
-                        )
-                    )
-
-                    print(
-                        "METADATA:",
-                        ctx.get(
-                            "metadata"
-                        )
-                    )
-
-                    print(
-                        "TEXT:"
-                    )
-
-                    print(
-                        ctx.get(
-                            "text",
-                            ""
-                        )[:5000]
-                    )
-
-                print(
-                    "=====================================\n"
-                )
+                    contexts = []
 
                 # =================================================
-                # SAFETY FILTER
+                # DOCUMENT-ID SAFETY FILTER
                 # =================================================
-                # Never allow evidence belonging to another
-                # document into the reasoning layer.
+                #
+                # This is an additional safety layer in the UI.
+                # The QA graph already receives the active
+                # document_id, but we verify the returned
+                # evidence again before displaying it.
+                #
                 # =================================================
 
                 safe_contexts = []
@@ -1113,25 +1246,27 @@ if st.button(
 
                     if not isinstance(
                         context,
-                        dict
+                        dict,
                     ):
+
                         continue
 
                     metadata = context.get(
                         "metadata",
-                        {}
+                        {},
                     )
 
                     if not isinstance(
                         metadata,
-                        dict
+                        dict,
                     ):
+
                         continue
 
                     returned_document_id = str(
                         metadata.get(
                             "document_id",
-                            ""
+                            "",
                         )
                     )
 
@@ -1145,34 +1280,178 @@ if st.button(
                         )
 
                 # =================================================
-                # DISPLAY RETRIEVAL STATUS
+                # QA DEBUG
                 # =================================================
 
-                st.info(
-                    f"Retrieved {len(contexts)} context(s); "
-                    f"{len(safe_contexts)} passed document safety filtering."
+                print(
+                    "\n"
+                    "========== LANGGRAPH QA DEBUG =========="
+                )
+
+                print(
+                    "QUESTION:",
+                    question,
+                )
+
+                print(
+                    "DOCUMENT ID:",
+                    document_id,
+                )
+
+                print(
+                    "RETRIEVAL K:",
+                    retrieval_k,
+                )
+
+                print(
+                    "QUESTION TYPE:",
+                    qa_result.get(
+                        "question_type",
+                        "unknown",
+                    ),
+                )
+
+                print(
+                    "ROUTE:",
+                    qa_result.get(
+                        "route",
+                        "unknown",
+                    ),
+                )
+
+                print(
+                    "CONTEXT COUNT:",
+                    len(contexts),
+                )
+
+                print(
+                    "SAFE CONTEXT COUNT:",
+                    len(safe_contexts),
+                )
+
+                for i, ctx in enumerate(
+                    safe_contexts,
+                    start=1,
+                ):
+
+                    print(
+                        f"\n--- CONTEXT {i} ---"
+                    )
+
+                    print(
+                        "CHUNK ID:",
+                        ctx.get(
+                            "chunk_id"
+                        ),
+                    )
+
+                    print(
+                        "DISTANCE:",
+                        ctx.get(
+                            "distance"
+                        ),
+                    )
+
+                    print(
+                        "METADATA:",
+                        ctx.get(
+                            "metadata"
+                        ),
+                    )
+
+                    print(
+                        "TEXT:"
+                    )
+
+                    print(
+                        ctx.get(
+                            "text",
+                            "",
+                        )[:5000]
+                    )
+
+                print(
+                    "========================================\n"
                 )
 
                 # =================================================
-                # REASONING
-                # =================================================
-
-                answer = reasoning_agent.answer(
-                    question=question,
-                    contexts=safe_contexts,
-                )
-
-                # =================================================
-                # SAVE HISTORY
+                # SAVE QA HISTORY
                 # =================================================
 
                 st.session_state.qa_history.append(
                     {
-                        "question": question,
+                        "question": question.strip(),
+
                         "answer": answer,
+
                         "contexts": safe_contexts,
+
+                        "question_type": qa_result.get(
+                            "question_type",
+                            "unknown",
+                        ),
+
+                        "route": qa_result.get(
+                            "route",
+                            "unknown",
+                        ),
                     }
                 )
+
+                # =================================================
+                # DISPLAY CURRENT ANSWER
+                # =================================================
+
+                st.success(
+                    "Question answered."
+                )
+
+                st.markdown(
+                    "### Answer"
+                )
+
+                st.markdown(
+                    answer
+                )
+
+                # =================================================
+                # SHOW ROUTING INFORMATION
+                # =================================================
+
+                qa_col1, qa_col2, qa_col3 = st.columns(3)
+
+                with qa_col1:
+
+                    st.metric(
+                        "Question type",
+                        str(
+                            qa_result.get(
+                                "question_type",
+                                "unknown",
+                            )
+                        ),
+                    )
+
+                with qa_col2:
+
+                    st.metric(
+                        "Reasoning route",
+                        str(
+                            qa_result.get(
+                                "route",
+                                "unknown",
+                            )
+                        ),
+                    )
+
+                with qa_col3:
+
+                    st.metric(
+                        "Evidence chunks",
+                        len(
+                            safe_contexts
+                        ),
+                    )
 
             except Exception as exc:
 
@@ -1180,7 +1459,9 @@ if st.button(
                     "Question answering failed."
                 )
 
-                st.exception(exc)
+                st.exception(
+                    exc
+                )
 
 
 # =========================================================
@@ -1188,6 +1469,8 @@ if st.button(
 # =========================================================
 
 if st.session_state.qa_history:
+
+    st.divider()
 
     st.subheader(
         "Answers"
@@ -1199,21 +1482,31 @@ if st.session_state.qa_history:
 
         question_text = item.get(
             "question",
-            ""
+            "",
         )
 
         answer_text = item.get(
             "answer",
-            ""
+            "",
         )
 
         contexts = item.get(
             "contexts",
-            []
+            [],
+        )
+
+        question_type = item.get(
+            "question_type",
+            "unknown",
+        )
+
+        route = item.get(
+            "route",
+            "unknown",
         )
 
         with st.container(
-            border=True
+            border=True,
         ):
 
             st.markdown(
@@ -1222,6 +1515,15 @@ if st.session_state.qa_history:
 
             st.markdown(
                 f"**Answer:** {answer_text}"
+            )
+
+            # =====================================================
+            # ROUTING INFORMATION
+            # =====================================================
+
+            st.caption(
+                f"LangGraph route: {route} | "
+                f"Question type: {question_type}"
             )
 
             # =====================================================
@@ -1236,28 +1538,29 @@ if st.session_state.qa_history:
 
                     for index, context in enumerate(
                         contexts,
-                        start=1
+                        start=1,
                     ):
 
                         if not isinstance(
                             context,
-                            dict
+                            dict,
                         ):
+
                             continue
 
                         metadata = context.get(
                             "metadata",
-                            {}
+                            {},
                         )
 
                         text = context.get(
                             "text",
-                            ""
+                            "",
                         )
 
                         if not isinstance(
                             metadata,
-                            dict
+                            dict,
                         ):
 
                             metadata = {}
@@ -1266,18 +1569,18 @@ if st.session_state.qa_history:
                             "page",
                             metadata.get(
                                 "page_number",
-                                "unknown"
-                            )
+                                "unknown",
+                            ),
                         )
 
                         source = metadata.get(
                             "source",
-                            "unknown"
+                            "unknown",
                         )
 
                         chunk_type = metadata.get(
                             "type",
-                            "text"
+                            "text",
                         )
 
                         distance = context.get(
@@ -1300,7 +1603,9 @@ if st.session_state.qa_history:
                             f"Distance: {distance}"
                         )
 
-                        st.text(text)
+                        st.text(
+                            text
+                        )
 
                         st.divider()
 
@@ -1317,26 +1622,41 @@ if st.session_state.qa_history:
 
 with st.expander(
     "🛠️ Debug Information",
-    expanded=False
+    expanded=False,
 ):
 
     debug_info = {
         "document_id": document_id,
+
         "file_path": result.get(
             "file_path"
         ),
+
         "retrieval_top_k": RETRIEVAL_TOP_K,
+
         "retrieval_max_k": RETRIEVAL_MAX_K,
-        "chunks": len(chunks)
-        if isinstance(chunks, list)
-        else 0,
+
+        "chunks": (
+            len(chunks)
+            if isinstance(
+                chunks,
+                list,
+            )
+            else 0
+        ),
+
         "qa_count": len(
             st.session_state.qa_history
         ),
+
         "timing": result.get(
             "timing",
-            {}
+            {},
         ),
+
+        "langgraph_document_workflow": True,
+
+        "langgraph_qa_workflow": True,
     }
 
     st.json(
