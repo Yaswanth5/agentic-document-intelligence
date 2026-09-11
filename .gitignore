@@ -1,0 +1,85 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Local databases / vector stores
+*.db
+*.sqlite
+*.sqlite3
+chroma/
+chromadb/
+vector_store/
+storage/chroma/
+
+# Documents and test data
+uploads/
+uploaded_files/
+documents/
+docs/
+*.pdf
+*.doc
+*.docx
+*.xlsx
+*.xls
+*.csv
+
+
+# OCR / temporary output
+output/
+outputs/
+temp/
+tmp/
+cache/
+*.tmp
+
+# Models
+models/
+*.joblib
+*.pkl
+*.pickle
+*.pt
+*.pth
+*.bin
+*.safetensors
+*.onnx
+
+# Generated files
+*.html
+*.zip
+
+# Build
+*.egg-info/
+dist/
+build/
+
+# Streamlit secrets
+.streamlit/secrets.toml
+
+storage/extracted_images/
+storage/ocr_cache/
+storage/rendered_pages/
+data/
+dummy_documents/
+*.exe

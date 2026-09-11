@@ -1,0 +1,15 @@
+streamlit
+docling
+chromadb
+ollama
+pytesseract
+opencv-python
+Pillow
+PyMuPDF
+requests
+sentence-transformers
+numpy
+pandas
+openpyxl
+python-docx
+python-pptx
